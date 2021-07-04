@@ -1,0 +1,22 @@
+package read_csv;
+
+public final class Constants {
+	// DB CONSTANTS 
+	public static final String DB_URL = "jdbc:mysql://localhost:3306/csv_database";
+	public static final String DB_NAME = "";
+	public static final String DB_USER = "csv_user";
+	public static final String DB_PASSWORD = "csv_password";
+	
+	// THREAD CONSTANTS
+	public static final String SAVE_COUNT = "SAVE_COUNT";	// key in thread return map, containing count of success save count
+	public static final Integer BATCH_LIMIT = 50;
+	public static final Integer QUEUE_SIZE = 65536;
+	
+	public static final String CREATE_TABLE_SQL = "CREATE TABLE %s (id INT NOT NULL AUTO_INCREMENT %s, PRIMARY KEY (id)); ";
+	
+	public static final String DATETIME_REGEX = "(\\d{4})-(\\d{2})-(\\d{2}) (\\d{2}):(\\d{2}):(\\d{2})";
+	public static final String INTEGER_REGEX = "/^\\-?\\d*\\.?\\d*$/";
+	public static final String VARCHAR_TYPE = "VARCHAR(250)";
+	public static final String INT_TYPE = "INT";
+	public static final String DATETIME_TYPE= "DATETIME";
+}

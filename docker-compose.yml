@@ -1,0 +1,30 @@
+version: '3'
+ 
+services:
+  mydb:
+    image: mysql
+    container_name: mydb
+    environment:
+      # these can be replaced by env variable
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: csv_database
+      MYSQL_USER: csv_user
+      MYSQL_PASSWORD: csv_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./database:/var/lib/mysql
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: pma
+    environment:
+      PMA_HOST: mydb
+      PMA_PORT: 3306
+      PMA_ARBITRARY: 1
+    restart: always
+    ports:
+      - 8080:80
+  # java_app:
+  #   build: 
+  #     dockerfile: Dockerfile
+  #     context: ./java

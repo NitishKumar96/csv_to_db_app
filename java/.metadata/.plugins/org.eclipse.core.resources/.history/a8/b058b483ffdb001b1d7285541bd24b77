@@ -1,0 +1,9 @@
+package read_csv;
+
+public final class Constants {
+	
+	public String DB_URL = "jdbc:mysql://localhost:3306/csv_database";
+	public String DB_NAME = "";
+	public String DB_USER = "csv_user";
+	public String DB_PASSWORD = "csv_password";
+}
