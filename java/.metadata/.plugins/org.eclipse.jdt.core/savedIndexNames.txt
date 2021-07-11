@@ -1,3 +1,0 @@
-INDEX VERSION 1.131+/Users/batman/code/csv_to_db_app/java/.metadata/.plugins/org.eclipse.jdt.core
-3128207647.index
-1194014128.index

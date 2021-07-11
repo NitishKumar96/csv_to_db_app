@@ -11,13 +11,14 @@ import java.sql.*;
 import java.util.HashMap;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
+import org.apache.commons.csv.CSVFormat;
 
 import static read_csv.Constants.*;
 
@@ -32,6 +33,8 @@ public class ReadCsv implements Callable<Integer> {
 	Integer thread_count = 1;
 	@Option(names = { "-ai", "--analysis_index" }, description = "number of threads to write data into db.")
 	Integer analysis_index = -1; // -1 no index to process
+	@Option(names = {  "--batch_size" }, description = "batch size of DB insert")
+	Integer batch_size = BATCH_LIMIT; 
 
 	private Boolean new_table = false;
 	protected AtomicBoolean is_done = new AtomicBoolean();
@@ -40,6 +43,7 @@ public class ReadCsv implements Callable<Integer> {
 	protected String[] col_types = null;
 	protected String col_name_sql = "";
 	protected int col_count = 0;
+	protected long time_taken =0;
 
 	private Connection connection = null;
 
@@ -60,6 +64,8 @@ public class ReadCsv implements Callable<Integer> {
 		// read csv file, read first 2 line to get column names and type
 		BufferedReader line_reader = null;
 		String current_line = null;
+		
+		// READ FIRST 2 LINES OF CSV
 		try {
 			line_reader = new BufferedReader(new FileReader(this.file_name));
 			current_line = line_reader.readLine();
@@ -75,11 +81,17 @@ public class ReadCsv implements Callable<Integer> {
 			e.printStackTrace();
 			return 1;
 		}
-
+ 
+		// PROCESS COLUMN NAMES AND 
 		this.col_count = this.col_names.length;
 		String value_list = "";
 		for (int i = 0; i < this.col_count; i++) {
-			this.col_names[i] = this.col_names[i].trim().replace(" ", "_");
+			String col_name = this.col_names[i].trim().replaceAll("[()?:!.,;{}%]+", "_");
+			
+			if(col_name.equals("")) col_name = "blank_"+i; 
+			else if(col_name.equals("id")) col_name = col_name+"_"+i; 
+
+			this.col_names[i]=col_name;
 			this.col_types[i] = get_col_type(this.col_types[i]);
 			if (this.col_name_sql.length() <= 1) {
 				this.col_name_sql = this.col_names[i];
@@ -89,12 +101,17 @@ public class ReadCsv implements Callable<Integer> {
 				value_list = value_list + ",?";
 			}
 		}
+		CSVFormat formater = CSVFormat.DEFAULT
+									.withTrim()
+									.withAllowMissingColumnNames()
+									.withHeader(this.col_names)
+									;
 
 		// make connection object
 		try {
-			Class.forName("com.mysql.jdbc.Driver"); 
+			Class.forName("com.mysql.cj.jdbc.Driver"); 
 			this.connection = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
-			//this.connection.setAutoCommit(false);
+			this.connection.setAutoCommit(false);
 		} catch (SQLException e) {
 			System.out.println("Error while connecting to dastabase.");
 			e.printStackTrace();
@@ -123,15 +140,16 @@ public class ReadCsv implements Callable<Integer> {
 		String thread_insert_sql = String.format(INSERT_TABLE_SQL, this.table_name, this.col_name_sql, value_list);
 		// make thread
 		FutureTask<HashMap<String, Integer>>[] thread_list = new FutureTask[this.thread_count];
-		BlockingQueue<String>[] master_queue = new ArrayBlockingQueue[this.thread_count];
+		BlockingQueue<String>[] master_queue = new PriorityBlockingQueue[this.thread_count];
+		// PriorityBlockingQueue<String> master_queue = new PriorityBlockingQueue<String>(this.thread_count);
 		this.is_done.set(false);
 
 		for (int i = 0; i < this.thread_count; i++) {
 			// have to initialise the queue also
-			master_queue[i] = new ArrayBlockingQueue<String>(QUEUE_SIZE);
+			master_queue[i] = new PriorityBlockingQueue<String>(QUEUE_SIZE);
 
 			Callable<HashMap<String, Integer>> callable = new ProcessThread(master_queue[i], this.is_done,
-					thread_insert_sql, this.col_types, this.col_count, this.analysis_index, thread_hash);
+					thread_insert_sql, this.col_types, this.col_count, this.analysis_index, formater, this.batch_size,thread_hash);
 
 			// Create the FutureTask with Callable
 			thread_list[i] = new FutureTask<HashMap<String, Integer>>(callable);
@@ -141,22 +159,34 @@ public class ReadCsv implements Callable<Integer> {
 		}
 
 		// READ THE CSV AND ADD DATA INTO THE THREAD
+		long start_time = System.nanoTime(); 
 		int current_line_index = 0;
 		try {
 			int current_thread = 0;
+			Boolean line_added = false;
 			do {
 				current_line_index++;
+				line_added=false;
 				// if the current line is new line
 				if (current_line_index > this.lines_read) {
-					master_queue[current_thread].put(current_line);
-					if (current_line_index % (BATCH_LIMIT * this.thread_count) == 0) {
-						update_master_count(current_line_index, 0);
-					}
-					current_thread++;
-					if (current_thread >= this.thread_count) {
-						current_thread = current_thread % this.thread_count;
+					while(line_added == false){
+						// master_queue.add(current_line);
+						if(master_queue[current_thread].size()< QUEUE_SIZE){
+							master_queue[current_thread].put(current_line);
+							line_added=true;
+						}
+						if (current_line_index % (this.batch_size * this.thread_count) == 0 & current_line_index > this.lines_read) {
+							this.lines_read = current_line_index;
+							update_master_count(this.lines_read, 0, System.nanoTime()- start_time, this.thread_count);
+						}
+						current_thread++;
+						if (current_thread >= this.thread_count) {
+							current_thread = current_thread % this.thread_count;
+						}
 					}
 				}
+
+				
 			} while ((current_line = line_reader.readLine()) != null);
 
 			line_reader.close();
@@ -184,6 +214,7 @@ public class ReadCsv implements Callable<Integer> {
 				}
 			}
 		}
+		this.time_taken = System.nanoTime()- start_time;
 		HashMap<String, Integer> final_hash = new HashMap<String, Integer>();
 		final_hash.put("READ_COUNT", current_line_index);
 		for (int i = 0; i < this.thread_count; i++) {
@@ -214,7 +245,7 @@ public class ReadCsv implements Callable<Integer> {
 
 	private void save_final_value(HashMap<String, Integer> final_hash) throws SQLException {
 		// UPDATE MASTER TABLE
-		update_master_count(final_hash.get("READ_COUNT"), final_hash.get(SAVE_COUNT));
+		update_master_count(final_hash.get("READ_COUNT"), final_hash.get(SAVE_COUNT),this.time_taken, this.thread_count);
 		// UPDATE ANALYSIS TABLE
 		String sql = String.format(UPDATE_ANALYSIS_SQL, this.table_name);
 		Statement statement = this.connection.createStatement();
@@ -223,14 +254,16 @@ public class ReadCsv implements Callable<Integer> {
 		sql = INSERT_ANALYSIS_SQL;
 		PreparedStatement analysis_statement = this.connection.prepareStatement(sql);
 		for (String key : final_hash.keySet()) {
-			analysis_statement.setString(0, this.table_name);
-			analysis_statement.setString(1, key);
-			analysis_statement.setString(2, "COUNT");
-			analysis_statement.setInt(3, final_hash.get(key));
+			if( key.equals("READ_COUNT")| key.equals(SAVE_COUNT)) continue;
+			analysis_statement.setString(1, this.table_name);
+			analysis_statement.setString(2, key);
+			analysis_statement.setString(3, "COUNT");
+			analysis_statement.setInt(4, final_hash.get(key));
 			analysis_statement.addBatch();
 		}
-		statement.executeBatch();
-		connection.commit();
+		// System.out.println(analysis_statement);
+		analysis_statement.executeBatch();
+		this.connection.commit();
 	}
 
 	private HashMap<String, Integer> merge_hash(HashMap<String, Integer> final_hash,
@@ -247,11 +280,13 @@ public class ReadCsv implements Callable<Integer> {
 		return final_hash;
 	}
 
-	private void update_master_count(int current_line_index, int lines_saved) throws SQLException {
+	private void update_master_count(int current_line_index, int lines_saved, long time_taken, int num_thread) throws SQLException {
+		// Deactivate old row
 		String sql = String.format(UPDATE_MASTER_SQL, this.table_name);
 		Statement statement = this.connection.createStatement();
 		statement.execute(sql);
-		sql = String.format(INSERT_MASTER_SQL, this.file_name, this.table_name, current_line_index, lines_saved);
+		// insert new row
+		sql = String.format(INSERT_MASTER_SQL, this.file_name, this.table_name, current_line_index, lines_saved, time_taken, num_thread);
 		statement.execute(sql);
 		this.connection.commit();
 		this.lines_read = current_line_index;
@@ -260,7 +295,7 @@ public class ReadCsv implements Callable<Integer> {
 
 	private String make_new_table() throws SQLException {
 		UUID uuid = UUID.randomUUID();
-		table_name = uuid.toString();
+		table_name = uuid.toString().replaceAll("[()?:!.,;{}%-]+", "");
 		String col_sql = "";
 		for (int i = 0; i < this.col_count; i++) {
 			col_sql = col_sql + ", " + this.col_names[i] + " " + this.col_types[i];
@@ -269,7 +304,7 @@ public class ReadCsv implements Callable<Integer> {
 		String create_table_sql = String.format(CREATE_TABLE_SQL, this.table_name, col_sql);
 
 		// for debug
-		System.out.println("Generated create table sql : \n" + create_table_sql);
+		// System.out.println("Generated create table sql : \n" + create_table_sql);
 
 		Statement statement = this.connection.createStatement();
 		statement.execute(create_table_sql);
