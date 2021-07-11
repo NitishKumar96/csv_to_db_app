@@ -26,7 +26,7 @@ router.post('/new_file', (req, res) => {
       if (err) {
         res.send(err)
       } else {
-        var jar_command = "java -jar ./read_app.jar -f ./uploads/" + new_name
+        var jar_command = "java -jar "+__dirname+"/read_app.jar -f "+__dirname+"/uploads/" + new_name
         if (req.body.table_name.length > 0) {
           jar_command = jar_command + " -t " + req.body.table_name;
         }

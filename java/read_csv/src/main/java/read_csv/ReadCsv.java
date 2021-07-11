@@ -31,7 +31,7 @@ public class ReadCsv implements Callable<Integer> {
 	String table_name = "";
 	@Option(names = { "--thread_count" }, description = "number of threads to write data into db.")
 	Integer thread_count = 1;
-	@Option(names = { "-ai", "--analysis_index" }, description = "number of threads to write data into db.")
+	@Option(names = { "-ai", "--analysis_index" }, description = "Index of column in csv to be analysed.")
 	Integer analysis_index = -1; // -1 no index to process
 	@Option(names = {  "--batch_size" }, description = "batch size of DB insert")
 	Integer batch_size = BATCH_LIMIT; 
@@ -50,7 +50,7 @@ public class ReadCsv implements Callable<Integer> {
 	@SuppressWarnings("resource")
 	public Integer call() {
 		if (file_name.length() > 0) {
-			System.out.println("File name recieved: " + file_name);
+			System.out.println("File name received: " + file_name);
 		} else {
 			System.out.println("Invalid file name provided.");
 			return 1;
@@ -101,7 +101,7 @@ public class ReadCsv implements Callable<Integer> {
 				value_list = value_list + ",?";
 			}
 		}
-		CSVFormat formater = CSVFormat.DEFAULT
+		CSVFormat formatter = CSVFormat.DEFAULT
 									.withTrim()
 									.withAllowMissingColumnNames()
 									.withHeader(this.col_names)
@@ -113,11 +113,11 @@ public class ReadCsv implements Callable<Integer> {
 			this.connection = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
 			this.connection.setAutoCommit(false);
 		} catch (SQLException e) {
-			System.out.println("Error while connecting to dastabase.");
+			System.out.println("Error while connecting to database.");
 			e.printStackTrace();
 			return 1;
 		} catch (ClassNotFoundException e) {
-			System.out.println("Error dastabase class not found.");
+			System.out.println("Error database class not found.");
 			e.printStackTrace();
 			return 1;
 		}
@@ -136,7 +136,7 @@ public class ReadCsv implements Callable<Integer> {
 			this.lines_read = get_old_lines_read();
 		}
 
-		// PREPAIR DATA FOR THREAD
+		// DATA FOR THREAD
 		String thread_insert_sql = String.format(INSERT_TABLE_SQL, this.table_name, this.col_name_sql, value_list);
 		// make thread
 		FutureTask<HashMap<String, Integer>>[] thread_list = new FutureTask[this.thread_count];
@@ -145,11 +145,11 @@ public class ReadCsv implements Callable<Integer> {
 		this.is_done.set(false);
 
 		for (int i = 0; i < this.thread_count; i++) {
-			// have to initialise the queue also
+			// have to initialize the queue also
 			master_queue[i] = new PriorityBlockingQueue<String>(QUEUE_SIZE);
 
 			Callable<HashMap<String, Integer>> callable = new ProcessThread(master_queue[i], this.is_done,
-					thread_insert_sql, this.col_types, this.col_count, this.analysis_index, formater, this.batch_size,thread_hash);
+					thread_insert_sql, this.col_types, this.col_count, this.analysis_index, formatter, this.batch_size,thread_hash);
 
 			// Create the FutureTask with Callable
 			thread_list[i] = new FutureTask<HashMap<String, Integer>>(callable);
@@ -195,7 +195,7 @@ public class ReadCsv implements Callable<Integer> {
 			System.out.println("Error while reading csv file:\n");
 			e.printStackTrace();
 		} catch (InterruptedException e) {
-			System.out.println("Error while addign line to thread queue:\n");
+			System.out.println("Error while adding line to thread queue:\n");
 			e.printStackTrace();
 		} catch (SQLException e) {
 			System.out.println("Error while updating database:\n");
@@ -207,7 +207,7 @@ public class ReadCsv implements Callable<Integer> {
 		Boolean thread_running = true;
 		while (thread_running) { // wait while other threads are running
 			for (int i = 0; i < this.thread_count; i++) {
-				if (thread_list[i].isDone() == true) {
+				if (thread_list[i].isDone() == true ) {
 					thread_running = false;
 				} else {
 					thread_running = true;

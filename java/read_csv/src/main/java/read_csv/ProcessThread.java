@@ -22,17 +22,17 @@ public class ProcessThread implements Callable<HashMap<String, Integer>> {
 	protected Integer col_count = 0;
 	protected Integer count_index = -1;
 	protected HashMap<String, Integer> final_result = new HashMap<String, Integer>();
-	protected CSVFormat csv_formater=null;
+	protected CSVFormat csv_formatter=null;
 	protected int batch_size = BATCH_LIMIT;
 
 	public ProcessThread(BlockingQueue<String> queue, AtomicBoolean is_done, String sql, String[] col_type,
-			Integer col_count, Integer count_index, CSVFormat csv_formater, int batch_size,HashMap<String, Integer> final_result) {
+			Integer col_count, Integer count_index, CSVFormat csv_formatter, int batch_size,HashMap<String, Integer> final_result) {
 		this.queue = queue;
 		this.is_done = is_done;
 		this.sql = sql;
 		this.col_type = col_type;
 		this.col_count = col_count;
-		this.csv_formater = csv_formater;
+		this.csv_formatter = csv_formatter;
 		this.count_index = count_index;
 		if (final_result != null) {
 			this.final_result = final_result;
@@ -57,7 +57,7 @@ public class ProcessThread implements Callable<HashMap<String, Integer>> {
 			if (!this.queue.isEmpty()) {
 
 				String data_string = (String) this.queue.poll();
-				CSVRecord record = CSVParser.parse(data_string, this.csv_formater).getRecords().get(0);
+				CSVRecord record = CSVParser.parse(data_string, this.csv_formatter).getRecords().get(0);
 
 				// String data_string = (String) this.queue.take();
 				// String[] data = data_string.split(",");
@@ -66,6 +66,7 @@ public class ProcessThread implements Callable<HashMap<String, Integer>> {
 				for (int index = 0; index < this.col_count; index++) {
 					// add data into statement
 					String value = record.get(index);
+					value = value.substring(0,Math.min(value.length(), 200));
 					if (value.equals("")) value=null;
 					if (col_type[index] == INT_TYPE) {
 						statement.setInt(index+1, Integer.parseInt(value ));
@@ -96,11 +97,11 @@ public class ProcessThread implements Callable<HashMap<String, Integer>> {
 							final_result.put(SAVE_COUNT, final_result.get(SAVE_COUNT) + batch_count);
 							batch_count = 0;
 						} catch (SQLException ex) {
-							ex.printStackTrace();
+							System.out.println(ex.getLocalizedMessage());
 							try {
 								connection.rollback();
 							} catch (SQLException e) {
-								e.printStackTrace();
+								System.out.println(e.getLocalizedMessage());
 							}
 						}
 					}
@@ -120,11 +121,11 @@ public class ProcessThread implements Callable<HashMap<String, Integer>> {
 							running = false;
 							break;
 						} catch (SQLException ex) {
-							ex.printStackTrace();
+							System.out.println(ex.getLocalizedMessage());
 							try {
 								connection.rollback();
 							} catch (SQLException e) {
-								e.printStackTrace();
+								System.out.println(e.getLocalizedMessage());
 							}
 						}
 					}
