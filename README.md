@@ -15,10 +15,10 @@ You can change root passwords in docker-compose file.
 
 ## case 1: only java application
 
-All the code and application is present in /java dir, including a already prepared app.jar, hence you can run the following commands.
+All the code and application is present in ./java dir, including a already prepared app.jar, hence you can run the following commands.
 
 ```sh
-$ java -jar ./node/read_app.jar --help
+$ java -jar ./java/app.jar --help
 Usage: csv_reader [-hV] [-ai=<analysis_index>] [--batch_size=<batch_size>]
                   [-f=<file_name>] [-t=<table_name>]
                   [--thread_count=<thread_count>]
